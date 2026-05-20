@@ -116,6 +116,7 @@ export function PromptView() {
   const { mutate: handleGenerate } = useMutation({
     mutationFn: async (parts: AppUIMessage['parts']) => {
       if (!user?.id) throw new Error('User must be authenticated');
+      const conversationId = crypto.randomUUID();
 
       const text = parts
         .filter((p) => p.type === 'text')
@@ -134,7 +135,7 @@ export function PromptView() {
         text: text.trim().slice(0, 100),
         image_count: imageCount,
         mesh_count: meshCount,
-        conversation_id: newConversationId,
+        conversation_id: conversationId,
       });
 
       // Create conversation immediately with 'New Conversation'
@@ -142,7 +143,7 @@ export function PromptView() {
         .from('conversations')
         .insert([
           {
-            id: newConversationId,
+            id: conversationId,
             user_id: user.id,
             title: 'New Conversation',
             type: type,

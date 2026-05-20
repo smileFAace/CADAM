@@ -1,6 +1,8 @@
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
+import type { FetchFunction } from '@ai-sdk/provider-utils';
 import { chatTools, type AppUIMessage, type AppTools } from '@shared/chatAi';
 import { getParametricText } from '@shared/parametricParts';
 import type { Conversation, Message, MeshFileType, Model } from '@shared/types';
@@ -26,6 +28,11 @@ import { requiredEnv } from './env';
 import { logError } from './serverLog';
 import { handleMeshRequest } from './mesh';
 import { getAnonSupabaseClient } from './supabaseClient';
+import {
+  getModels,
+  resolveCustomProvider,
+  type ProviderCompatConfig,
+} from './models';
 
 /**
  * USD list price per **million** tokens, keyed by the same model IDs the
@@ -238,31 +245,179 @@ function jsonResponse(body: unknown, status: number) {
 
 const THINKING_BUDGET_TOKENS = 9000;
 
-type ChatProvider = 'anthropic' | 'google' | 'openrouter';
+type ChatProvider =
+  | 'anthropic'
+  | 'google'
+  | 'openrouter'
+  | 'custom-openai'
+  | 'custom-anthropic'
+  | 'custom-google';
 
-function providerFor(modelId: string): ChatProvider {
-  if (modelId.startsWith('anthropic/')) return 'anthropic';
-  if (modelId.startsWith('google/')) return 'google';
-  return 'openrouter';
+function createOpenAICompatFetch(
+  compat?: ProviderCompatConfig,
+): FetchFunction | undefined {
+  if (!compat) return undefined;
+
+  return async (input, init) => {
+    if (!init?.body || typeof init.body !== 'string') {
+      return fetch(input, init);
+    }
+
+    let payload: Record<string, unknown>;
+    try {
+      payload = JSON.parse(init.body) as Record<string, unknown>;
+    } catch {
+      return fetch(input, init);
+    }
+
+    if (
+      compat.maxTokensField === 'max_tokens' &&
+      'max_completion_tokens' in payload &&
+      !('max_tokens' in payload)
+    ) {
+      payload.max_tokens = payload.max_completion_tokens;
+      delete payload.max_completion_tokens;
+    }
+
+    if (
+      compat.supportsDeveloperRole === false &&
+      Array.isArray(payload.messages)
+    ) {
+      payload.messages = payload.messages.map((message) => {
+        if (
+          message &&
+          typeof message === 'object' &&
+          'role' in message &&
+          message.role === 'developer'
+        ) {
+          return { ...message, role: 'system' };
+        }
+        return message;
+      });
+    }
+
+    if (compat.requiresToolResultName && Array.isArray(payload.messages)) {
+      payload.messages = payload.messages.map((message) => {
+        if (
+          message &&
+          typeof message === 'object' &&
+          'role' in message &&
+          message.role === 'tool' &&
+          !('name' in message)
+        ) {
+          return { ...message, name: 'tool' };
+        }
+        return message;
+      });
+    }
+
+    if (compat.supportsUsageInStreaming === false) {
+      delete payload.stream_options;
+    }
+
+    if (compat.supportsToolChoice === false) {
+      delete payload.tool_choice;
+    }
+
+    console.log(
+      '[custom-openai] request',
+      JSON.stringify(
+        {
+          url:
+            typeof input === 'string'
+              ? input
+              : input instanceof URL
+                ? input.toString()
+                : input.url,
+          compat,
+          keys: Object.keys(payload),
+          hasTools: Array.isArray(payload.tools) && payload.tools.length > 0,
+          toolChoice: payload.tool_choice ?? null,
+          hasStreamOptions: 'stream_options' in payload,
+          stream: payload.stream ?? null,
+          maxTokensField:
+            'max_tokens' in payload
+              ? 'max_tokens'
+              : 'max_completion_tokens' in payload
+                ? 'max_completion_tokens'
+                : null,
+          messageRoles: Array.isArray(payload.messages)
+            ? payload.messages.map((message) =>
+                message && typeof message === 'object' && 'role' in message
+                  ? message.role
+                  : 'unknown',
+              )
+            : [],
+          firstMessage:
+            Array.isArray(payload.messages) && payload.messages[0]
+              ? payload.messages[0]
+              : null,
+        },
+        null,
+        2,
+      ),
+    );
+
+    return fetch(input, { ...init, body: JSON.stringify(payload) });
+  };
 }
 
 type AnthropicProvider = ReturnType<typeof createAnthropic>;
 type GoogleProvider = ReturnType<typeof createGoogleGenerativeAI>;
+type OpenAICompatibleProvider = ReturnType<typeof createOpenAI>;
+type AnthropicCompatibleProvider = ReturnType<typeof createAnthropic>;
 
 type ChatProviders = {
   anthropic: AnthropicProvider;
   google: GoogleProvider;
+  anthropicCompatible: (
+    baseUrl: string,
+    apiKey: string,
+  ) => AnthropicCompatibleProvider;
+  openaiCompatible: (
+    baseUrl: string,
+    apiKey: string,
+    compat?: ProviderCompatConfig,
+  ) => OpenAICompatibleProvider;
   /** Lazy — only initialized if a non-Anthropic / non-Google model is used. */
   openrouter: () => ReturnType<typeof createOpenRouter>;
 };
 
 function createChatProviders(): ChatProviders {
   let openrouter: ReturnType<typeof createOpenRouter> | undefined;
+  const openaiCompatible = new Map<string, OpenAICompatibleProvider>();
+  const anthropicCompatible = new Map<string, AnthropicCompatibleProvider>();
   return {
     anthropic: createAnthropic({ apiKey: requiredEnv('ANTHROPIC_API_KEY') }),
     google: createGoogleGenerativeAI({
       apiKey: requiredEnv('GOOGLE_API_KEY'),
     }),
+    anthropicCompatible: (baseUrl: string, apiKey: string) => {
+      const key = `${baseUrl}::${apiKey}`;
+      let provider = anthropicCompatible.get(key);
+      if (!provider) {
+        provider = createAnthropic({ baseURL: baseUrl, apiKey });
+        anthropicCompatible.set(key, provider);
+      }
+      return provider;
+    },
+    openaiCompatible: (
+      baseUrl: string,
+      apiKey: string,
+      compat?: ProviderCompatConfig,
+    ) => {
+      const key = `${baseUrl}::${apiKey}::${JSON.stringify(compat ?? {})}`;
+      let provider = openaiCompatible.get(key);
+      if (!provider) {
+        provider = createOpenAI({
+          baseURL: baseUrl,
+          apiKey,
+          fetch: createOpenAICompatFetch(compat),
+        });
+        openaiCompatible.set(key, provider);
+      }
+      return provider;
+    },
     openrouter: () => {
       openrouter ??= createOpenRouter({
         apiKey: requiredEnv('OPENROUTER_API_KEY'),
@@ -284,13 +439,54 @@ function buildChatModel(
   modelId: string,
   providers: ChatProviders,
   thinking: boolean,
-): { model: LanguageModel; providerOptions?: ProviderOptions } {
+): {
+  model: LanguageModel;
+  provider: ChatProvider;
+  providerOptions?: ProviderOptions;
+} {
+  const custom = resolveCustomProvider(modelId);
+  if (custom) {
+    if (custom.apiType === 'anthropic') {
+      return {
+        model: providers.anthropicCompatible(
+          custom.baseUrl,
+          custom.apiKey,
+        )(custom.apiModelId),
+        provider: 'custom-anthropic',
+        providerOptions: thinking
+          ? {
+              anthropic: {
+                thinking: {
+                  type: 'enabled',
+                  budgetTokens: THINKING_BUDGET_TOKENS,
+                },
+              },
+            }
+          : undefined,
+      };
+    }
+
+    if (custom.apiType === 'google') {
+      throw new Error(
+        `Custom provider ${custom.providerName} uses apiType=google, which is not supported yet in CADAM custom providers`,
+      );
+    }
+
+    return {
+      model: providers
+        .openaiCompatible(custom.baseUrl, custom.apiKey, custom.compat)
+        .chat(custom.apiModelId),
+      provider: 'custom-openai',
+    };
+  }
+
   if (modelId.startsWith('anthropic/')) {
     // Anthropic's API uses dashes everywhere ("claude-haiku-4-5"), while the
     // OpenRouter alias uses dots ("claude-haiku-4.5"). Normalize both.
     const id = modelId.slice('anthropic/'.length).replace(/\./g, '-');
     return {
       model: providers.anthropic(id),
+      provider: 'anthropic',
       providerOptions: thinking
         ? {
             anthropic: {
@@ -308,6 +504,7 @@ function buildChatModel(
     const id = modelId.slice('google/'.length);
     return {
       model: providers.google(id),
+      provider: 'google',
       // Gemini 3 Pro (and most current Google reasoning models) always
       // think internally — `thinkingBudget` only controls how MUCH, not
       // whether. `includeThoughts` is what actually surfaces those
@@ -333,6 +530,7 @@ function buildChatModel(
         : {}),
       usage: { include: true },
     }),
+    provider: 'openrouter',
   };
 }
 
@@ -717,6 +915,14 @@ export async function handleAiChatRequest(req: Request) {
     return new Response(null, { headers: corsHeaders });
   }
 
+  if (req.method === 'GET') {
+    const url = new URL(req.url);
+    if (url.searchParams.get('action') === 'getModels') {
+      return jsonResponse({ models: getModels() }, 200);
+    }
+    return jsonResponse({ error: 'Method not allowed' }, 405);
+  }
+
   if (req.method !== 'POST') {
     return jsonResponse({ error: 'Method not allowed' }, 405);
   }
@@ -881,10 +1087,10 @@ export async function handleAiChatRequest(req: Request) {
   // what the client picked — billing has to price the model that ran,
   // not the one the user requested.
   const actualModelId = chatModel(conversation, rawBody.model);
-  const resolvedProvider = providerFor(actualModelId);
 
   let chatLanguageModel: LanguageModel;
   let chatProviderOptions: ProviderOptions | undefined;
+  let resolvedProvider: ChatProvider = 'openrouter';
   try {
     const built = buildChatModel(
       actualModelId,
@@ -893,6 +1099,7 @@ export async function handleAiChatRequest(req: Request) {
     );
     chatLanguageModel = built.model;
     chatProviderOptions = built.providerOptions;
+    resolvedProvider = built.provider;
   } catch (error) {
     logError(error, {
       functionName: 'ai-chat',

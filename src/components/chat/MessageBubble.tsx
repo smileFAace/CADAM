@@ -8,7 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { CREATIVE_MODELS, PARAMETRIC_MODELS } from '@/lib/utils';
+import { CREATIVE_MODELS } from '@/lib/utils';
 import { Avatar, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { usePreview } from '@/hooks/usePreview';
+import { useModels } from '@/hooks/useModels';
 import { useMeshData } from '@/hooks/useMeshData';
 import { generatePreview, generateColoredPreview } from '@/utils/meshUtils';
 import { previewScadColoredViaToolWorker } from '@/worker/toolWorker';
@@ -351,8 +352,9 @@ function AssistantBubble({
   onRestore,
 }: MessageBubbleProps) {
   const { conversation } = useConversation();
+  const { models: fetchedModels } = useModels(conversation.type);
   const modelOptions =
-    conversation.type === 'creative' ? CREATIVE_MODELS : PARAMETRIC_MODELS;
+    conversation.type === 'creative' ? CREATIVE_MODELS : fetchedModels;
   const [expandedTools, setExpandedTools] = useState<Set<number>>(new Set());
 
   const text = useMemo(

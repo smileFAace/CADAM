@@ -28,13 +28,14 @@ export async function persistUserMessage({
   parentMessageId: string | null;
 }): Promise<string> {
   const id = crypto.randomUUID();
+  const normalizedParentMessageId = parentMessageId || null;
   const { error } = await supabase.from('messages').insert({
     id,
     conversation_id: conversationId,
     role: 'user',
     parts: JSON.parse(JSON.stringify(parts)),
     metadata: JSON.parse(JSON.stringify(metadata ?? {})),
-    parent_message_id: parentMessageId,
+    parent_message_id: normalizedParentMessageId,
   });
   if (error) throw error;
   return id;

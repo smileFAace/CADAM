@@ -17,12 +17,7 @@ import {
   Box,
   X,
 } from 'lucide-react';
-import {
-  cn,
-  CREATIVE_MODELS,
-  PARAMETRIC_MODELS,
-  parametricModelSupportsVision,
-} from '@/lib/utils';
+import { cn, parametricModelSupportsVision } from '@/lib/utils';
 import { CreativeModel, MeshFileType, Model } from '@shared/types';
 import type { AppUIMessage } from '@shared/chatAi';
 import {
@@ -49,6 +44,7 @@ import { useMutation } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { ModelSelector } from '@/components/ModelSelector';
+import { useModels } from '@/hooks/useModels';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar } from '@/components/ui/avatar';
@@ -651,12 +647,7 @@ function TextAreaChat({
     },
   };
 
-  const memoizedModels = useMemo(() => {
-    if (type === 'creative') {
-      return CREATIVE_MODELS;
-    }
-    return PARAMETRIC_MODELS;
-  }, [type]);
+  const { models: memoizedModels } = useModels(type);
 
   // ------------------------------------------------------------
   // Placeholder – Typed-out Animation
