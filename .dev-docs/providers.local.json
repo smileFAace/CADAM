@@ -1,0 +1,83 @@
+{
+  "builtinModels": [
+    {
+      "id": "google/gemini-3.1-pro-preview",
+      "name": "Gemini 3.1 Pro",
+      "description": "Latest Google model with excellent multi-modal capabilities",
+      "provider": "Google",
+      "supportsTools": true,
+      "supportsThinking": true,
+      "supportsVision": true
+    },
+    {
+      "id": "anthropic/claude-opus-4.7",
+      "name": "Claude Opus 4.7",
+      "description": "Most powerful Anthropic model for complex reasoning",
+      "provider": "Anthropic",
+      "supportsTools": true,
+      "supportsThinking": true,
+      "supportsVision": true
+    },
+    {
+      "id": "openai/gpt-5.5",
+      "name": "GPT-5.5",
+      "description": "Latest OpenAI model for reliable CAD generation",
+      "provider": "OpenAI",
+      "supportsTools": true,
+      "supportsThinking": true,
+      "supportsVision": true
+    },
+    {
+      "id": "moonshotai/kimi-k2.6",
+      "name": "Kimi K2.6",
+      "description": "Moonshot multimodal model with configurable reasoning, vision, and native tool use",
+      "provider": "MoonshotAI",
+      "supportsTools": true,
+      "supportsThinking": true,
+      "supportsVision": true
+    }
+  ],
+  "providers": [
+    {
+      "id": "xiaomi",
+      "name": "Xiaomi MiMo",
+      "baseUrl": "https://token-plan-cn.xiaomimimo.com/v1",
+      "apiKey": "tp-cylb3e3xmmnvevzm52etschsdcm6hp1x7q3whyjbzc82bhjd",
+      "apiType": "openai",
+      "compat": {
+        "requiresReasoningContentOnAssistantMessages": true,
+        "maxTokensField": "max_tokens",
+        "supportsUsageInStreaming": false,
+        "supportsToolChoice": false
+      },
+      "models": [
+        {
+          "id": "openai/gpt-5.5",
+          "apiModelId": "mimo-v2.5-pro",
+          "name": "MiMo V2.5 Pro (via Xiaomi)",
+          "description": "Xiaomi MiMo Pro with reasoning",
+          "supportsTools": true,
+          "supportsVision": false,
+          "supportsThinking": true
+        }
+      ]
+    },
+    {
+      "id": "runanytime",
+      "name": "RunAnyTime",
+      "baseUrl": "https://runanytime.hxi.me/v1",
+      "apiKey": "sk-bR58IyuR6N13hO5qlDVK6crvY5nxQ3dH9SbJ9rGPcNDw0KJ6",
+      "models": [
+        {
+          "id": "anthropic/claude-opus-4.7",
+          "apiModelId": "deepseek/deepseek-v4-pro",
+          "name": "DeepSeek V4 Pro (via RunAnyTime)",
+          "description": "DeepSeek V4 Pro with reasoning",
+          "supportsTools": true,
+          "supportsVision": false,
+          "supportsThinking": true
+        }
+      ]
+    }
+  ]
+}
