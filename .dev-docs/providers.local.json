@@ -52,9 +52,8 @@
       },
       "models": [
         {
-          "id": "openai/gpt-5.5",
           "apiModelId": "mimo-v2.5-pro",
-          "name": "MiMo V2.5 Pro (via Xiaomi)",
+          "name": "MiMo V2.5 Pro",
           "description": "Xiaomi MiMo Pro with reasoning",
           "supportsTools": true,
           "supportsVision": false,
@@ -69,9 +68,8 @@
       "apiKey": "sk-bR58IyuR6N13hO5qlDVK6crvY5nxQ3dH9SbJ9rGPcNDw0KJ6",
       "models": [
         {
-          "id": "anthropic/claude-opus-4.7",
           "apiModelId": "deepseek/deepseek-v4-pro",
-          "name": "DeepSeek V4 Pro (via RunAnyTime)",
+          "name": "DeepSeek V4 Pro",
           "description": "DeepSeek V4 Pro with reasoning",
           "supportsTools": true,
           "supportsVision": false,
