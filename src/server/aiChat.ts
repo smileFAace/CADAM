@@ -319,6 +319,26 @@ function createOpenAICompatFetch(
       delete payload.tool_choice;
     }
 
+    // MiMo (and similar providers) require reasoning_content on assistant
+    // messages when replaying conversation history in thinking mode.
+    if (
+      compat.requiresReasoningContentOnAssistantMessages &&
+      Array.isArray(payload.messages)
+    ) {
+      payload.messages = payload.messages.map((message) => {
+        if (
+          message &&
+          typeof message === 'object' &&
+          'role' in message &&
+          message.role === 'assistant' &&
+          !('reasoning_content' in message)
+        ) {
+          return { ...message, reasoning_content: '' };
+        }
+        return message;
+      });
+    }
+
     console.log(
       '[custom-openai] request',
       JSON.stringify(
