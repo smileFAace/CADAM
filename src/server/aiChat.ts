@@ -1227,13 +1227,21 @@ export async function handleAiChatRequest(req: Request) {
       // Title (first user turn only) runs in parallel with the model
       // stream — fire-and-forget; the assistant doesn't wait on it.
       if (isFirstUserTurn) {
-        void emitConversationTitle({
-          writer,
-          anthropic: providers.anthropic(),
-          supabaseClient,
-          conversation,
-          firstMessage: branchMessages[0],
-        });
+        // Title generation uses Anthropic directly (cheap Haiku call).
+        // If the user's model is a custom provider with no ANTHROPIC_API_KEY
+        // set, silently skip rather than crashing the whole stream.
+        try {
+          const anthropic = providers.anthropic();
+          void emitConversationTitle({
+            writer,
+            anthropic,
+            supabaseClient,
+            conversation,
+            firstMessage: branchMessages[0],
+          });
+        } catch {
+          // No Anthropic key — title generation skipped. Not an error.
+        }
       }
 
       writer.merge(
@@ -1344,16 +1352,21 @@ export async function handleAiChatRequest(req: Request) {
               // ~200-500ms Haiku call delays the client's "streaming"
               // → "ready" transition by the same amount, which is the
               // tradeoff for getting pills delivered.
-              await emitConversationSuggestions({
-                writer,
-                anthropic: providers.anthropic(),
-                supabaseClient,
-                conversation,
-                branch: [
-                  ...branchMessages,
-                  { ...responseMessage, parts: finalizedParts },
-                ],
-              });
+              try {
+                const anthropic = providers.anthropic();
+                await emitConversationSuggestions({
+                  writer,
+                  anthropic,
+                  supabaseClient,
+                  conversation,
+                  branch: [
+                    ...branchMessages,
+                    { ...responseMessage, parts: finalizedParts },
+                  ],
+                });
+              } catch {
+                // No Anthropic key — suggestions skipped. Not an error.
+              }
             }
           },
         }),
