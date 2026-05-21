@@ -152,8 +152,7 @@ npx supabase db reset || (npx supabase stop --no-backup && npx supabase start)
 | 日期       | 更新内容                                                               |
 | ---------- | ---------------------------------------------------------------------- |
 | 2026-05-21 | 初版 — 分支拉取 → 安装 → 编译 → Supabase 重置完整流程                  |
-| 2026-05-21 | 修复：内置 Anthropic/Google provider 惰性初始化，避免无 API key 时崩溃 |
-| 2026-05-21 | 修复：prompt-generator 使用 buildChatModel 链路，支持 custom provider 模型生成 prompt |
+| 2026-05-21 | 重构：统一所有 LLM 调用入口为 `buildChatModel`，辅助功能（标题/建议/prompt）不再直接依赖具体 Provider |
 
 ---
 
