@@ -154,6 +154,7 @@ npx supabase db reset || (npx supabase stop --no-backup && npx supabase start)
 | 2026-05-21 | 初版 — 分支拉取 → 安装 → 编译 → Supabase 重置完整流程                  |
 | 2026-05-21 | 重构：统一所有 LLM 调用入口为 `buildChatModel`，辅助功能（标题/建议/prompt）不再直接依赖具体 Provider |
 | 2026-05-21 | 分析：当前 `build_parametric_model` 为单体工具，无中间反馈机制；设计原子 tool call 架构见 `.dev-docs/toolcall-architecture.md` |
+| 2026-05-21 | 分析：滑块参数调整不回写对话历史，下次 LLM 调用与用户操作状态不一致；`replaceBuildParametricModelOutput` 为死代码，见 `.dev-docs/architecture-analysis.md` |
 
 ---
 
