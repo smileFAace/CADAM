@@ -731,16 +731,16 @@ async function loadBranchFromDb({
 }
 
 async function generateConversationTitle({
-  anthropic,
+  model,
   firstMessage,
 }: {
-  anthropic: AnthropicProvider;
+  model: LanguageModel;
   firstMessage: AppUIMessage;
 }) {
   const text = getParametricText(firstMessage.parts) || 'New conversation';
   try {
     const result = await generateText({
-      model: anthropic('claude-haiku-4-5'),
+      model,
       system:
         'Generate a short title for a 3D creation conversation. Return only the title.',
       prompt: text,
@@ -763,11 +763,11 @@ async function generateConversationTitle({
  * specific assistant turn.
  */
 async function generateConversationSuggestions({
-  anthropic,
+  model,
   branch,
   conversationType,
 }: {
-  anthropic: AnthropicProvider;
+  model: LanguageModel;
   branch: AppUIMessage[];
   conversationType: 'parametric' | 'creative';
 }): Promise<string[]> {
@@ -785,7 +785,7 @@ async function generateConversationSuggestions({
   const summary = `User request: ${firstUserText.slice(0, 400)}\n\nMost recent assistant reply: ${lastAssistantText.slice(0, 400)}`;
   try {
     const result = await generateText({
-      model: anthropic('claude-haiku-4-5'),
+      model,
       system:
         conversationType === 'creative'
           ? 'Given a 3D mesh design conversation, return an array of exactly 3 follow-up prompts the user might want to send next. Each prompt is a single concise instruction (under 8 words), not a question. Return exactly 3 items — no more, no fewer.'
@@ -1227,21 +1227,13 @@ export async function handleAiChatRequest(req: Request) {
       // Title (first user turn only) runs in parallel with the model
       // stream — fire-and-forget; the assistant doesn't wait on it.
       if (isFirstUserTurn) {
-        // Title generation uses Anthropic directly (cheap Haiku call).
-        // If the user's model is a custom provider with no ANTHROPIC_API_KEY
-        // set, silently skip rather than crashing the whole stream.
-        try {
-          const anthropic = providers.anthropic();
-          void emitConversationTitle({
-            writer,
-            anthropic,
-            supabaseClient,
-            conversation,
-            firstMessage: branchMessages[0],
-          });
-        } catch {
-          // No Anthropic key — title generation skipped. Not an error.
-        }
+        void emitConversationTitle({
+          writer,
+          model: chatLanguageModel,
+          supabaseClient,
+          conversation,
+          firstMessage: branchMessages[0],
+        });
       }
 
       writer.merge(
@@ -1352,21 +1344,16 @@ export async function handleAiChatRequest(req: Request) {
               // ~200-500ms Haiku call delays the client's "streaming"
               // → "ready" transition by the same amount, which is the
               // tradeoff for getting pills delivered.
-              try {
-                const anthropic = providers.anthropic();
-                await emitConversationSuggestions({
-                  writer,
-                  anthropic,
-                  supabaseClient,
-                  conversation,
-                  branch: [
-                    ...branchMessages,
-                    { ...responseMessage, parts: finalizedParts },
-                  ],
-                });
-              } catch {
-                // No Anthropic key — suggestions skipped. Not an error.
-              }
+              await emitConversationSuggestions({
+                writer,
+                model: chatLanguageModel,
+                supabaseClient,
+                conversation,
+                branch: [
+                  ...branchMessages,
+                  { ...responseMessage, parts: finalizedParts },
+                ],
+              });
             }
           },
         }),
@@ -1391,19 +1378,19 @@ export async function handleAiChatRequest(req: Request) {
  */
 async function emitConversationTitle({
   writer,
-  anthropic,
+  model,
   supabaseClient,
   conversation,
   firstMessage,
 }: {
   writer: UIMessageStreamWriter<AppUIMessage>;
-  anthropic: AnthropicProvider;
+  model: LanguageModel;
   supabaseClient: SupabaseAnon;
   conversation: ConversationAccess;
   firstMessage: AppUIMessage;
 }) {
   try {
-    const title = await generateConversationTitle({ anthropic, firstMessage });
+    const title = await generateConversationTitle({ model, firstMessage });
     await supabaseClient
       .from('conversations')
       .update({ title })
@@ -1433,20 +1420,20 @@ async function emitConversationTitle({
  */
 async function emitConversationSuggestions({
   writer,
-  anthropic,
+  model,
   supabaseClient,
   conversation,
   branch,
 }: {
   writer: UIMessageStreamWriter<AppUIMessage>;
-  anthropic: AnthropicProvider;
+  model: LanguageModel;
   supabaseClient: SupabaseAnon;
   conversation: ConversationAccess;
   branch: AppUIMessage[];
 }) {
   try {
     const suggestions = await generateConversationSuggestions({
-      anthropic,
+      model,
       branch,
       conversationType: conversation.type,
     });
