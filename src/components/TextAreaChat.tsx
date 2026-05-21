@@ -1168,6 +1168,7 @@ function TextAreaChat({
           body: JSON.stringify({
             existingText: input.trim() || undefined,
             type,
+            model,
           }),
         },
         promptResponseSchema,

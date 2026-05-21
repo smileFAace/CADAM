@@ -405,7 +405,7 @@ type ChatProviders = {
   openrouter: () => ReturnType<typeof createOpenRouter>;
 };
 
-function createChatProviders(): ChatProviders {
+export function createChatProviders(): ChatProviders {
   let anthropic: ReturnType<typeof createAnthropic> | undefined;
   let google: ReturnType<typeof createGoogleGenerativeAI> | undefined;
   let openrouter: ReturnType<typeof createOpenRouter> | undefined;
@@ -467,7 +467,7 @@ function createChatProviders(): ChatProviders {
  * Everything else (OpenAI, MoonshotAI, …) keeps going through OpenRouter so we
  * don't have to wire a dedicated provider per vendor.
  */
-function buildChatModel(
+export function buildChatModel(
   modelId: string,
   providers: ChatProviders,
   thinking: boolean,

@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { createAnthropicText } from '@/server/anthropic';
+import { generateText } from 'ai';
+import { buildChatModel, createChatProviders } from '@/server/aiChat';
 import {
   isRecord,
   isUnauthorizedError,
@@ -8,6 +9,7 @@ import {
   preflight,
   requireUser,
 } from '@/server/api';
+import type { Model } from '@shared/types';
 
 const CREATIVE_PROMPT =
   'Generate a short creative prompt for an organic 3D form, character, figurine, sculpture, or artistic object. Return only the prompt text.';
@@ -34,20 +36,30 @@ export const Route = createFileRoute('/api/prompt-generator')({
           ) {
             return json({ error: 'invalid_existing_text' }, 400);
           }
-          const existingText = body.existingText;
+          const existingText = body.existingText as string | undefined;
           const base =
             body.type === 'parametric' ? PARAMETRIC_PROMPT : CREATIVE_PROMPT;
           const content = existingText
             ? `${base}\n\nImprove this existing prompt while preserving its intent:\n${existingText}`
             : base;
-          const prompt = await createAnthropicText({
-            model: 'claude-haiku-4-5-20251001',
-            maxTokens: 200,
+
+          // Use the user's selected model (or fallback to claude-haiku-4-5)
+          const modelId =
+            typeof body.model === 'string'
+              ? (body.model as Model)
+              : ('anthropic/claude-haiku-4-5' as Model);
+
+          let providers = createChatProviders();
+          const { model } = buildChatModel(modelId, providers, false);
+
+          const result = await generateText({
+            model,
             system:
               'You write concise 3D generation prompts. Return only the prompt text, no quotes or explanation.',
-            content,
+            prompt: content,
           });
-          return json({ prompt });
+
+          return json({ prompt: result.text.trim() });
         } catch (err) {
           return json(
             {
