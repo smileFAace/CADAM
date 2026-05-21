@@ -388,8 +388,10 @@ type OpenAICompatibleProvider = ReturnType<typeof createOpenAI>;
 type AnthropicCompatibleProvider = ReturnType<typeof createAnthropic>;
 
 type ChatProviders = {
-  anthropic: AnthropicProvider;
-  google: GoogleProvider;
+  /** Lazy — only initialized if an Anthropic model is used. */
+  anthropic: () => AnthropicProvider;
+  /** Lazy — only initialized if a Google model is used. */
+  google: () => GoogleProvider;
   anthropicCompatible: (
     baseUrl: string,
     apiKey: string,
@@ -404,14 +406,24 @@ type ChatProviders = {
 };
 
 function createChatProviders(): ChatProviders {
+  let anthropic: ReturnType<typeof createAnthropic> | undefined;
+  let google: ReturnType<typeof createGoogleGenerativeAI> | undefined;
   let openrouter: ReturnType<typeof createOpenRouter> | undefined;
   const openaiCompatible = new Map<string, OpenAICompatibleProvider>();
   const anthropicCompatible = new Map<string, AnthropicCompatibleProvider>();
   return {
-    anthropic: createAnthropic({ apiKey: requiredEnv('ANTHROPIC_API_KEY') }),
-    google: createGoogleGenerativeAI({
-      apiKey: requiredEnv('GOOGLE_API_KEY'),
-    }),
+    anthropic: () => {
+      anthropic ??= createAnthropic({
+        apiKey: requiredEnv('ANTHROPIC_API_KEY'),
+      });
+      return anthropic;
+    },
+    google: () => {
+      google ??= createGoogleGenerativeAI({
+        apiKey: requiredEnv('GOOGLE_API_KEY'),
+      });
+      return google;
+    },
     anthropicCompatible: (baseUrl: string, apiKey: string) => {
       const key = `${baseUrl}::${apiKey}`;
       let provider = anthropicCompatible.get(key);
@@ -505,7 +517,7 @@ function buildChatModel(
     // OpenRouter alias uses dots ("claude-haiku-4.5"). Normalize both.
     const id = modelId.slice('anthropic/'.length).replace(/\./g, '-');
     return {
-      model: providers.anthropic(id),
+      model: providers.anthropic()(id),
       provider: 'anthropic',
       providerOptions: thinking
         ? {
@@ -523,7 +535,7 @@ function buildChatModel(
   if (modelId.startsWith('google/')) {
     const id = modelId.slice('google/'.length);
     return {
-      model: providers.google(id),
+      model: providers.google()(id),
       provider: 'google',
       // Gemini 3 Pro (and most current Google reasoning models) always
       // think internally — `thinkingBudget` only controls how MUCH, not
@@ -1045,10 +1057,10 @@ export async function handleAiChatRequest(req: Request) {
 
   const leafMessageId = conversation.current_message_leaf_id;
 
-  // `createChatProviders` calls `requiredEnv(...)` eagerly — a missing
-  // ANTHROPIC_API_KEY / GOOGLE_API_KEY throws here, before we've started
-  // a stream. Catch + log so the failure mode is "503 with a clear
-  // server log" instead of "500 with no logs".
+  // `createChatProviders` used to call `requiredEnv(...)` eagerly
+  // for all built-in providers. Now Anthropic and Google are lazy too
+  // (same pattern as OpenRouter), but we keep the try-catch as a
+  // safety net in case other eager setup is added later.
   let providers: ChatProviders;
   try {
     providers = createChatProviders();
@@ -1217,7 +1229,7 @@ export async function handleAiChatRequest(req: Request) {
       if (isFirstUserTurn) {
         void emitConversationTitle({
           writer,
-          anthropic: providers.anthropic,
+          anthropic: providers.anthropic(),
           supabaseClient,
           conversation,
           firstMessage: branchMessages[0],
@@ -1334,7 +1346,7 @@ export async function handleAiChatRequest(req: Request) {
               // tradeoff for getting pills delivered.
               await emitConversationSuggestions({
                 writer,
-                anthropic: providers.anthropic,
+                anthropic: providers.anthropic(),
                 supabaseClient,
                 conversation,
                 branch: [
